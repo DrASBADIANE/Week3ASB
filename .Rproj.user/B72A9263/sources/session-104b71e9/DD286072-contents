@@ -1,0 +1,70 @@
+---
+title: "Report on Motorcycle Accident Deaths in Colombia"
+subtitle: "Tidyverse and RMarkdown Practice"
+author: "MELISSA PANDI" # Remember to add your name!
+output:
+  prettydoc::html_pretty:
+    theme: architect
+date: "`r Sys.Date()`"
+---
+
+```{r include = FALSE}
+# Set chunk options
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+# TASK 1: LOAD THE REQUIRED PACKAGES
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse,here,janitor)
+```
+
+```{r}
+# TASK 2: IMPORT THE DATA
+library(dplyr)
+col_accidents <- read_csv("data/motorcycle_accidents_colombia.csv")
+```
+
+```{r}
+# TASK 3: CLEAN THE COLUMN NAMES 
+col_accidents_clean <- col_accidents %>% clean_names()
+```
+
+```{r}
+# TASK 4: RENAME AND TRANSFORM VARIABLES
+col_accidents_clean2 <- col_accidents_clean %>% rename(position=condition)%>%
+  mutate(gender = str_to_title(gender))
+  
+```
+
+```{r}
+# TASK 5: CREATE A SUBSET
+col_accidents_subset <- col_accidents_clean2%>%select(id,gender,age,age_group,position)%>%
+  filter(position !="unknown")
+```
+
+```{r}
+# TASK 6: SUMMARIZE DATA
+age_sex_count <- col_accidents_subset %>% count(age_group,gender)
+```
+
+```{r}
+# TASK 7: VISUALIZE SUMMARY DATA
+esquisse::esquisser(age_sex_count)
+library(ggplot2)
+ggplot(age_sex_count) +
+ aes(x = age_group, y = n, fill = gender) +
+ geom_col() +
+ scale_fill_hue(direction = 1) +
+ theme_minimal()
+```
+
+```{r}
+# TASK 8: EXPORT YOUR OUTPUTS
+##1.  Export your summary table as a CSV file
+write.csv()
+"WRITE_YOUR_CODE_HERE"
+```
+
+
+

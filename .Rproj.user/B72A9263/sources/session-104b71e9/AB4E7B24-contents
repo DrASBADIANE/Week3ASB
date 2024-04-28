@@ -1,0 +1,639 @@
+#Import dataset and load packages
+load("C:/Users/lenovo/Desktop/Papier 1/VHB ET REIN/bl_data_badiane_BONNE.RData")
+library(readxl)
+library(transplantr)
+library(labelled)
+str(bl_data_badiane_261023$atcd_TDF)
+
+pacman::p_load(tidyverse, tidyr,
+               dplyr,here,janitor,esquisse, magrittr, gtsummary)
+
+
+urin_smit <- read_excel("C:/Users/lenovo/Desktop/Papier 1/VHB ET REIN/Résultats tests urinaire SEN B SMIT_VR_190823.xlsx")
+urin_cta <- read_excel("C:/Users/lenovo/Desktop/Papier 1/VHB ET REIN/Résultats tests urinaire SEN B CTA_VR (1).xlsx")
+urin<- rbind(urin_smit, urin_cta)
+urin$pid<- str_c(urin$ID,"",urin$Patient)
+str(urin)
+
+data_urin<-  urin %>% dplyr::select (pid, `Albuminurie mg/l`, 
+                                     `Proteiunurie mg/l`,`Creatinurie mg/dl`)
+
+CKD<-bl_data_badiane_261023 %>%
+  dplyr::select (pid, age_en, sen_yn, sex, education,fam_hcc, drugs, alcohol_cons, 
+                 audit_tot, smoke_yn, HTA, DM2, RENAL, 
+                 COL,atcd_TDF, atcd_3TC, atcd_CTX, atcd_aHTA, atcd_aDM, alt_res, ast_res,
+                 ast_res, trad_med,tas, tad, temp, weight, 
+                 height, hb_res, wbc_res, plt_res, tp_res, glu_res,
+                 trg_res, colt_res, hdl_res, ldl_res,cre_res, creu_res, leubu_res, 
+                 hembu_res, protbu_res, glubu_res, cvb_res, qAgHBs_res,
+                 AcVHD_res, AcVHC_res, AgHBe_res, fibs_med_res, cap_med_res, cirr_yn, stea_yn) %>% 
+  
+  left_join(data_urin, by= "pid") %>% 
+  
+  rename(albu= `Albuminurie mg/l`,
+         protu = `Proteiunurie mg/l`,
+         creatu = `Creatinurie mg/dl`,
+         age=age_en) %>% 
+  filter(atcd_TDF==0) %>%  
+  ungroup() %>% 
+  subset( is.na(cre_res) == F) %>% 
+    mutate(creatu = ifelse(is.na(creatu),median(creatu,na.rm = T),creatu)) %>% 
+  mutate(protu = ifelse(is.na(protu),median(cre_res,na.rm = T),protu)) %>% 
+  mutate(albu= ifelse(is.na(albu),median(albu,na.rm = T),albu)) %>% 
+  mutate(weight = ifelse(is.na(weight),median(weight,na.rm = T),weight)) %>% 
+  mutate(height = ifelse(is.na(height),median(height,na.rm = T),height)) %>% 
+  mutate_if(is.character, as.factor) %>% 
+  mutate (height_m= height/100,
+          BMI= weight/(height_m*height_m))
+
+#Data Management 
+
+CKD$HTAB= ifelse(CKD$atcd_aHTA==1, "Oui","Non")
+CKD$DM2B= ifelse(CKD$atcd_aDM==1, "Oui", "Non")
+CKD$alcohol= ifelse(CKD$alcohol_cons==1 |
+                      CKD$alcohol_cons==2, "Oui", "Non")
+CKD$smoke= ifelse(CKD$smoke_yn==1 |
+                    CKD$smoke_yn==2, "Oui", "Non")
+CKD$drug= ifelse(CKD$drugs==1 |
+                   CKD$drugs==2, "Oui", "Non")
+CKD$BMI25= ifelse(CKD$BMI> 25, "Oui", "Non")
+tabyl(CKD$BMI25)
+CKD$trad_med= ifelse(CKD$trad_med==1, "Oui", "Non")
+CKD$AgHBe_res= ifelse(CKD$AgHBe_res==1, "0ui", "Non")
+CKD$AcVHC_res= ifelse(CKD$AcVHC_res==1, "0ui", "Non")
+CKD$AcVHD_res= ifelse(CKD$AcVHD_res==1, "0ui", "Non")
+CKD$atcd_TDF= ifelse(CKD$atcd_TDF==1, "0ui", "Non")
+CKD$CAP238= ifelse (CKD$cap_med_res> 238, "Oui", "Non")
+CKD$fibrose= ifelse (CKD$fibs_med_res>7.1, "Oui", "Non")
+CKD$ALT40= ifelse(CKD$alt_res> 40, "Oui", "Non")
+CKD$cv2000 = ifelse (CKD$cvb_res>2000, "Oui", "Non")
+CKD$Hz_drinking= ifelse(CKD$audit_tot >3, "Oui", "Non")
+
+
+#Create Outcome Kidney dysfunction (KD)
+
+CKD$ethno= ifelse(CKD$sen_yn==1 | 
+                    CKD$sen_yn== 2, "black", "non-black")
+
+CKD$sex= as.factor(CKD$sex)
+
+CKD$sexe= ifelse(CKD$sex==1, "M", "F")
+
+CKD$cre_res=as.numeric(CKD$cre_res) 
+CKD1<- CKD%>% 
+  mutate(crea = cre_res/10 ) %>% 
+  mutate(Cl_r = ckd_epi_US (creat = crea , age = age, 
+                            sex = sexe, eth = ethno, offset = 0)) %>% 
+  mutate(creum= creatu*0.08842) %>% 
+  mutate(rpc= protu/creum) %>% 
+  mutate(rac= albu/creum) %>% 
+  mutate(rap= albu/protu)
+summary(CKD1$rpc)
+CKD1$rac_rec <- cut(CKD1$rac,
+                    include.lowest = TRUE,
+                    right = FALSE,
+                    dig.lab = 4,
+                    breaks = c(0, 3, 30, 191))
+
+
+## Recodage de CKD1$Cl_r en CKD1$Cl_r_class
+
+
+CKD1$Cl_r_class2 <- cut(CKD1$Cl_r,
+                        include.lowest = TRUE,
+                        right = TRUE,
+                        dig.lab = 4,
+                        breaks = c(0, 30, 60, 90, 180))
+
+
+CKD1$LGFR= ifelse(CKD1$Cl_r< 60, "Oui","Non")
+tabyl(CKD1$LGFR)
+CKD1$Au= ifelse(CKD1$rac>3, "Oui", "Non")
+CKD1$Pu= if_else(CKD1$rpc > 15, "Oui","Non")
+
+tabyl(CKD1$Pu)
+CKD1 %>% tbl_summary (by= Pu, include = c(Au))
+
+CKD1$KD= ifelse(CKD1$Au=="Oui"|
+                  CKD1$LGFR=="Oui", "RD", "Non-RD")
+tabyl(CKD1$KD)
+
+CKD1$protbu = ifelse (CKD1$protbu_res>1, "Oui", "Non")
+tabyl(CKD1$protbu)
+CKD1$glubu= ifelse (CKD1$glubu_res>1, "Oui", "Non")
+CKD1$leubu= ifelse (CKD1$leubu_res>=1, "Oui", "Non")
+CKD1$hembu= ifelse (CKD1$hembu_res>1, "Oui", "Non")
+
+
+## Recodage de CKD1$age en CKD1$age_class
+
+CKD1$age_class <- cut(CKD1$age,
+                      include.lowest = TRUE,
+                      right = FALSE,
+                      dig.lab = 4,
+                      breaks = c(18, 25, 31, 39, 74),
+                      labels= c("18-24", "25-30", "31-38",">39"))
+
+tabyl(CKD1$age_class)
+
+## Recodage de CKD1$fibs_med_res en CKD1$fibs_class
+
+CKD1$fibs_class <- cut(CKD1$fibs_med_res,
+                       include.lowest = TRUE,
+                       right = FALSE,
+                       dig.lab = 4,
+                       breaks = c(0, 7.1, 11, 76))
+
+# Recodage de CKD1$cvb_res en CKD1$cvb_res_rec
+CKD1$cvb_res_rec <- cut(CKD1$cvb_res,
+                        include.lowest = FALSE,
+                        right = TRUE,
+                        dig.lab = 4,
+                        breaks = c(0, 20, 2000, 20000, 1.7e+08))
+
+tabyl(CKD1$cvb_res_rec)   
+
+
+
+#Labelled
+CKD1$sex= ifelse(CKD1$sex==1, "Masculin","Feminin")
+
+tabyl(CKD1$Hz_drinking)
+
+CKD2<- CKD1 %>% mutate_if(is.character, as.factor)
+var_label(CKD2) <- list(
+  age = "Age (years)",
+  sex = "Sexe",
+  HTAB= "Hypertension",
+  DM2B="Diabete melitus",
+  BMI= "Body Mass Index, (kg/m2)",
+  smoke= "Current smoking",
+  alcohol="alcohol cunsumation",
+  drug= "Drugs",
+  hb_res= "Hemoglobin,g/dl",
+  wbc_res= "White blood cell, cell/mm3",
+  plt_res= "platelet, cell/mm3",
+  alt_res="ALAT, (UI/ml)",
+  ALT40= "ALAT> 40 IU/ml",
+  cvb_res="HBV DNA, (IU/mL)",
+  cv2000= "HBV DNA > 2000 IU/ml",
+  AgHBe_res= "HbeAg positive",
+  fibs_med_res= "LSM, kPa",
+  AcVHD_res= "HDVAb positive",
+  AcVHC_res= "HCVAb positive",
+  trad_med= "Use of traditional medicine ",
+  KD= "Renal dysfunciton",
+  Cl_r="Renal clearance(ml/min)",
+  Au= "ACR > 3 mg/mmol",
+  Pu= "uPCR > 15 mg/mmol",
+  Cl_r_class2= "renal clearance category",
+  LGFR= "renal clearance <60ml/min",
+  protbu= "Strips proteinuria",
+  glubu= "Strips glucose",
+  leubu= "Strips leucocyturie",
+  crea= "serum creatinine (mg/dl)",
+  fibrose= "LSM>7.1 kPa",
+  Hz_drinking= "Hazadous drinking")
+
+tabyl(CKD2$ALT40)
+CKD2$age_class <- cut(CKD1$age,
+                      include.lowest = TRUE,
+                      right = FALSE,
+                      dig.lab = 4,
+                      breaks = c(18, 25, 31, 39, 74),
+                      labels= c("18-24", "25-30", "31-38",">39"))
+CKD2$Cl_r_class2 <- cut(CKD1$Cl_r,
+                        include.lowest = TRUE,
+                        right = TRUE,
+                        dig.lab = 4,
+                        breaks = c(0, 30, 60, 90, 180),
+                        labels=c("<30","31-60", "61-90", ">90"))
+
+# Recodage de CKD1$cvb_res en CKD1$cvb_res_rec
+CKD2$cvb_rec <- cut(CKD2$cvb_res,
+                        include.lowest = FALSE,
+                        right = TRUE,
+                        dig.lab = 4,
+                        breaks = c(0, 20, 2000, 1.7e+08),
+                    labels=c("<20","21-2000", ">2000"))
+# All variable description
+CKD2 %>% tbl_summary (include= c(age, sex, HTAB, DM2B, BMI25, smoke, alcohol,
+                                 Hz_drinking, drug, 
+                                 CAP238, ALT40, cv2000, fibrose,AgHBe_res,  
+                                 AcVHD_res, AcVHC_res,,
+                                 KD, LGFR, Au))
+
+#Renal abnormalities description
+
+#By Renal dysfunction
+
+CKD2 %>% tbl_summary(by= KD, include = c(Au, Pu, crea, rac, rpc, LGFR, protbu, leubu,
+                                         hembu, glubu))%>% add_p() 
+
+
+CKD2 %>% tbl_summary(by= KD,
+                     include = c(age, age_class, sex, HTAB, DM2B,  BMI, BMI25, drug, smoke, alcohol,
+                                 Hz_drinking, alt_res, ALT40, fibs_class, fibrose, CAP238, trad_med,
+                                 AcVHD_res, cvb_res_rec,AcVHC_res, AgHBe_res)) %>% add_p()
+# Clearance category
+
+
+CKD2 %>% tbl_summary(by= Cl_r_class2,
+                     include = c(Au, Pu, rac, rpc, LGFR, protbu, leubu,
+                                 hembu, glubu))%>% add_p()
+
+CKD2 %>% tbl_summary(by= Cl_r_class2,
+                     include = c(age, age_class, sex, HTAB, DM2B,  BMI, BMI25, smoke, alcohol,
+                                 Hz_drinking, alt_res, ALT40, fibs_class, CAP238, trad_med,
+                                 AcVHD_res, AcVHC_res,)) %>% add_p()
+# Graph
+ tabyl(CKD2$sex)
+library(ggplot2)
+library(patchwork)
+library("cowplot")
+ CKD2$ALL<-1
+ 
+   G_KD<-CKD2  %>%
+   count(KD, ALL) %>%       
+   group_by(ALL) %>%
+   mutate(pct= prop.table(n) * 100) %>%
+   ggplot() + aes(ALL, pct, fill=KD) +
+   geom_bar(stat="identity", width = 1) +
+   ylab("Pourcentage(%)") +
+   xlab("All N=746 ")+
+   geom_text(aes(label=paste0(sprintf("%1.1f", pct),"%")),
+             position=position_stack(vjust=0.5)) +
+   labs(fill='')+
+   scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+   ggtitle("Dysfonction rénale") +
+   theme_classic()+
+   theme(axis.text.x = element_blank(), axis.ticks = element_blank())
+   
+     G_LGFR<-CKD2  %>%
+     count(LGFR, ALL) %>%       
+     group_by(ALL) %>%
+     mutate(pct= prop.table(n) * 100) %>%
+     ggplot() + aes(ALL, pct, fill=LGFR) +
+     geom_bar(stat="identity", width = 0.2) +
+     ylab("Pourcentage(%)") +
+     xlab("All N=746 ")+
+     geom_text(aes(label=paste0(sprintf("%1.1f", pct),"%")),
+               position=position_stack(vjust=0.5)) +
+     labs(fill=' ')+
+       scale_fill_manual(values = c("#DDCC77","#0072B2"), labels=c('Non', 'Oui'))+
+       ggtitle("DFGe") +
+     theme_classic()+
+       theme(axis.text.x = element_blank(), axis.ticks = element_blank())
+     
+     
+     G_alb<- CKD2  %>%
+       count(Au, ALL) %>%       
+       group_by(ALL) %>%
+       mutate(pct= prop.table(n) * 100) %>%
+       ggplot() + aes(ALL, pct, fill=Au) +
+       geom_bar(stat="identity", width = 0.2) +
+       ylab("Pourcentage(%)") +
+       xlab("All N=746 ")+
+       geom_text(aes(label=paste0(sprintf("%1.1f", pct),"%")),
+                 position=position_stack(vjust=0.5)) +
+       labs(fill='')+
+       scale_fill_manual(values = c("#DDCC77","#0072B2"), labels=c('Non', 'Oui'))+
+       ggtitle("Albuminurie") +
+       theme_classic()+
+     theme(axis.text.x = element_blank(), axis.ticks = element_blank())
+     
+ 
+ 
+   G_sex<- CKD2  %>%
+   count(KD, sex) %>%       
+   group_by(sex) %>%
+   mutate(pct= prop.table(n) * 100) %>%
+   ggplot() + aes(sex, pct, fill=KD) +
+   geom_bar(stat="identity") +
+   ylab("Pourcentage (%)") +
+   xlab("")+
+  labs(fill='Dysfonction rénale')+
+     ggtitle("Sexe")+
+  scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+  theme_classic()
+   
+     G_age <-CKD2  %>%
+     count(KD, age_class) %>%       
+     group_by(age_class) %>%
+     mutate(pct= prop.table(n) * 100) %>%
+     ggplot() + aes(age_class, pct, fill=KD) +
+     geom_bar(stat="identity") +
+     ylab("Pourcentage (%)") +
+     xlab("")+
+     labs(fill='Dysfonction rénale')+
+       ggtitle("Age, années")+
+       scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+     theme_classic() 
+     
+     G_HTA <-CKD2  %>%
+       count(KD, HTAB) %>%       
+       group_by(HTAB) %>%
+       mutate(pct= prop.table(n) * 100) %>%
+       ggplot() + aes(HTAB, pct, fill=KD) +
+       geom_bar(stat="identity") +
+       ylab("Pourcentage (%)") +
+       xlab("")+
+       labs(fill='Dysfonction rénale')+
+       ggtitle("Hypertension")+
+       scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+       theme_classic() 
+     
+     G_DM <- CKD2  %>%
+       count(KD, DM2B) %>%       
+       group_by(DM2B) %>%
+       mutate(pct= prop.table(n) * 100) %>%
+       ggplot() + aes(DM2B, pct, fill=KD) +
+       geom_bar(stat="identity") +
+       ylab("Pourcentage (%)") +
+       xlab("")+
+       labs(fill='Dysfonction rénale')+
+       ggtitle("Diabete")+
+       scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+       theme_classic() 
+   
+     G_BMI <-CKD2  %>%
+       count(KD, BMI25) %>%       
+       group_by(BMI25) %>%
+       mutate(pct= prop.table(n) * 100) %>%
+       ggplot() + aes(BMI25, pct, fill=KD) +
+       geom_bar(stat="identity") +
+       ylab("Pourcentage (%)") +
+       xlab("")+
+       labs(fill='Dysfonction rénale')+
+       ggtitle("IMC >25kg/m2")+
+       scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+       theme_classic()    
+     
+      G_alcool<-CKD2  %>%
+       count(KD, alcohol) %>%       
+       group_by(alcohol) %>%
+       mutate(pct= prop.table(n) * 100) %>%
+       ggplot() + aes(alcohol, pct, fill=KD) +
+       geom_bar(stat="identity") +
+       ylab("Pourcentage (%)") +
+       xlab("Alcool")+
+       labs(fill='Dysfonction rénale')+
+        scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+       theme_classic()
+      
+      G_tabac <- CKD2  %>%
+        count(KD, smoke) %>%       
+        group_by(smoke) %>%
+        mutate(pct= prop.table(n) * 100) %>%
+        ggplot() + aes(smoke, pct, fill=KD) +
+        geom_bar(stat="identity") +
+        ylab("Pourcentage (%)") +
+        xlab("Tabac")+
+        labs(fill='Dysfonction rénale')+
+        scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+        theme_classic()  
+         
+        G_drug<- CKD2  %>%
+        count(KD, drug) %>%       
+        group_by(drug) %>%
+        mutate(pct= prop.table(n) * 100) %>%
+        ggplot() + aes(drug, pct, fill=KD) +
+        geom_bar(stat="identity") +
+        ylab("Pourcentage (%)") +
+        xlab("Drogues")+
+        labs(fill='Dysfonction rénale')+
+        scale_fill_discrete(labels=c('Non', 'Oui'))+
+        theme_classic()    
+     
+  
+     G_VHC<-CKD2  %>%
+       count(KD, AcVHC_res) %>%       
+       group_by(AcVHC_res) %>%
+       mutate(pct= prop.table(n) * 100) %>%
+       ggplot() + aes(AcVHC_res, pct, fill=KD) +
+       geom_bar(stat="identity") +
+       ylab("Pourcentage (%)") +
+       xlab("Ac VHC")+
+       labs(fill='Dysfonction rénale')+
+       scale_fill_discrete(labels=c('Non', 'Oui'))+
+       theme_classic()    
+     
+     G_VHd <-CKD2  %>%
+       count(KD, AcVHD_res) %>%       
+       group_by(AcVHD_res) %>%
+       mutate(pct= prop.table(n) * 100) %>%
+       ggplot() + aes(AcVHD_res, pct, fill=KD) +
+       geom_bar(stat="identity") +
+       ylab("Pourcentage (%)") +
+       xlab("Ac VHC")+
+       labs(fill='Dysfonction rénale')+
+       scale_fill_discrete(labels=c('Non', 'Oui'))+
+       theme_classic() 
+     
+     G_Au 
+     
+       CKD2  %>%
+       count(Cl_r_class2, Au) %>%       
+       group_by(Cl_r_class2) %>%
+       mutate(pct= prop.table(n) * 100) %>%
+       ggplot() + aes(Cl_r_class2, pct, fill=Au) +
+       geom_bar(stat="identity") +
+       ylab("Pourcentage (%)") +
+       xlab("DFGe")+
+       labs(fill='Albuminurie')+
+       scale_fill_discrete(labels=c('Non', 'Oui'))+
+         scale_fill_manual(values = c("#E4AEAA","#6445D7"))+
+       theme_classic()   
+      
+     G_HBE
+       CKD2  %>%
+       count(KD, AgHBe_res) %>%       
+       group_by(AgHBe_res) %>%
+       mutate(pct= prop.table(n) * 100) %>%
+       ggplot() + aes(AgHBe_res, pct, fill=KD) +
+       geom_bar(stat="identity") +
+       ylab("Pourcentage (%)") +
+       xlab("AgHBe")+
+       labs(fill='Dysfonction rénale')+
+       scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+       theme_classic() 
+
+  G_ALT<-CKD2  %>%
+    count(KD, ALT40) %>%       
+    group_by(ALT40) %>%
+    mutate(pct= prop.table(n) * 100) %>%
+    ggplot() + aes(ALT40, pct, fill=KD) +
+    geom_bar(stat="identity") +
+    ylab("Pourcentage") +
+    xlab("")+
+      scale_x_discrete(labels=c("<40",">40"))+
+    labs(fill='Dysfonction rénale') +
+    scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+    ggtitle("ALAT,UI") +
+    theme_classic()
+   
+  G_CV <-CKD2  %>%
+    count(KD, cvb_rec) %>%       
+    group_by(cvb_rec) %>%
+    mutate(pct= prop.table(n) * 100) %>%
+    ggplot() + aes(cvb_rec, pct, fill=KD) +
+    geom_bar(stat="identity") +
+    ylab("Pourcentage") +
+    xlab("")+
+      labs(fill='Dysfonction rénale')+
+    scale_fill_manual(values = c("#E4AEAA","#6445D7"), labels=c('Non', 'Oui'))+
+    ggtitle("HBV DNA, IU/mL")+
+    theme_classic()
+  
+  G_LSM
+CKD2  %>%
+    count(KD, fibs_class) %>%       
+    group_by(fibs_class) %>%
+    mutate(pct= prop.table(n) * 100) %>%
+    ggplot() + aes(fibs_class, pct, fill= KD) +
+    geom_bar(stat="identity") +
+    ylab("Pourcentage") +
+    xlab("")+
+    labs(fill='Dysfonction rénale')+
+    scale_fill_discrete(labels=c('Non', 'Oui'))+
+    ggtitle("LSM")+
+    theme_classic()
+  
+  G_CAP 
+    CKD2  %>%
+    count(KD, CAP238) %>%       
+    group_by(CAP238) %>%
+    mutate(pct= prop.table(n) * 100) %>%
+    ggplot() + aes(CAP238, pct, fill= KD) +
+    geom_bar(stat="identity") +
+    ylab("Pourcentage") +
+    xlab("")+
+    labs(fill='Dysfonction rénale')+
+    scale_fill_discrete(labels=c('Non', 'Oui'))+
+    ggtitle("CAP")+
+    theme_classic()
+  
+  
+  
+  gridExtra::grid.arrange(GT1, GT2, ncol = 2)
+  
+#Graph Socio
+  
+  combined1 <-G_sex + G_age & theme(legend.position = "right")
+  
+  combined1 + plot_layout(guides = "collect")
+  
+  
+#Graph Comor
+  
+  combined2 <- G_HTA + G_DM + G_BMI & theme(legend.position = "right")
+  
+  combined2 + plot_layout(guides = "collect")
+  
+  #Graph Co_infection
+  combined3 <- G_VHC + G_VHd   & theme(legend.position = "right")
+  
+  combined3 + plot_layout(guides = "collect")
+  
+   # Graph_bio
+  
+  combined4 <- G_ALT + G_CV & theme (legend.position = "right")
+  
+  combined4 + plot_layout(guides = "collect")
+  
+  # Graph_FIBRO
+  
+  combined5 <- G_LSM + G_CAP  & theme(legend.position = "right")
+  
+  combined5 + plot_layout(guides = "collect")
+  # Graph_M
+  
+  combined6 <- G_tabac + G_alcool+ G_drug  & theme(legend.position = "right")
+  
+  combined6 + plot_layout(guides = "collect")
+  # Graph_KD
+  
+  combined7 <-G_KD + G_LGFR + G_alb & theme(legend.position = "right")
+  
+  combined7 + plot_layout(guides = "collect")
+  
+  
+  #Multi
+CKD2$age65= ifelse(CKD2$age> 31, "Oui", "Non")
+CKD2$age65= as.factor(CKD2$age65)
+CKD2$sex = relevel(CKD2$sex, ref = "Masculin" )
+CKDfi<-CKD2 %>%  
+  dplyr::select(KD,sex,
+                age65,
+                HTAB,
+                DM2B,
+                BMI25,
+                cv2000,
+                CAP238) 
+CKDfi$sex = relevel(CKDfi$sex, ref = "Masculin" )
+
+var_label(CKDfi) <- list(
+  age65 = "Age > 31 years",
+  sex = "Sexe",
+  HTAB= "Hypertension",
+  DM2B="Diabete melitus",
+  cv2000= "HBV DNA > 2000 IU/ml",
+  CAP238= "CAP > 238 dBm",
+  BMI25=  "BMI >25 Kg/m2")
+
+
+modfit<- glm(KD~sex+
+               age65+
+               HTAB+
+               DM2B+
+               BMI25+
+               cv2000+
+               CAP238,
+             data=CKDfi,
+             family= binomial(logit))
+
+summary(modfit)
+epiDisplay:: logistic.display(modfit)
+
+tbl_ufit<- CKDfi%>%  tbl_uvregression(  method = glm, y = KD,
+                                        method.args = list(family = binomial),
+                                        exponentiate = TRUE,
+                                        pvalue_fun = ~ style_pvalue(.x, digits = 2)) %>%
+  add_global_p() 
+
+tbl_mfit<-tbl_regression(modfit, exponentiate = TRUE) %>%
+  add_global_p
+
+tbl_merge(list(tbl_ufit, tbl_mfit),
+          tab_spanner = c("**Univarié**", "**Multivarié**"))
+library(GGally)
+ggcoef_model(modfit, exponentiate = TRUE, no_reference_row = broom.helpers::all_dichotomous())
+explanatory= c ("sex", "age65", "HTAB",
+              "DM2B", "BMI25", "cv2000", 
+              "CAP238")
+dependent= "KD"
+
+CKDfi %>%
+  or_plot(dependent, explanatory)
+library(arm)
+library(sjPlot)
+library(sjlabelled)
+library(sjmisc)
+library(ggplot2)
+arm::coefplot(mod0_std, col.pts="red", cex.pts=1.5)
+
+arm::coefplot(modfit, add=TRUE, col.pts="blue", cex.pts=1.5)
+
+
+plot_model(modfit)
+
+CKD2$Age31= ifelse(CKD2$age> 31, "AGE>31ans", "Age<31ans")
+CKD2$Sexee= ifelse(CKD2$sex== 1, "Sexemasculin", "Sexemasculin")
+CKD2$age65= as.factor(CKD2$age65)
+CKD2$sex = relevel(CKD2$sex, ref = "Masculin" )
+
+library (writexl)
+writexl::write_xlsx(CKD2,"C:\\Users\\lenovo\\Desktop\\Papier 1\\VHB ET REIN\\REIN_baseline.xlsx")
+
+library (writexl)
+writexl::write_xlsx(CKD,"C:\\Users\\lenovo\\Desktop\\Papier 1\\VHB ET REIN\\REIN_baseline1.xlsx")

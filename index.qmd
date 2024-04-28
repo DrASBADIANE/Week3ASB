@@ -1,0 +1,39 @@
+---
+title: "Week3_Workshop"
+author: "Dr Aboubakar Sidikh BADIANE"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+library(readr)
+library(tidyverse, ploty)
+entities<-c("Albania", "Germany", "Latvia", "Mexico", "Morocco","Zimbabwe", "Zambia", "South Africa")
+Happy<- read_csv("C:/Users/lenovo/Downloads/share-of-people-who-say-they-are-happy.csv") %>% 
+  rename(happiness=`Happiness: Happy (aggregate)`) %>%  
+  filter(Entity %in% entities)
+
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+ggplot(Happy, aes(x = Year, y = happiness, color = Entity)) +
+  geom_line(size = 1.5, linetype = "solid") +
+  theme_bw()
+```
+
+```{r}
+
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).

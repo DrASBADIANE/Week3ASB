@@ -1,0 +1,12 @@
+"0","Happy<- read_csv(""C:/Users/lenovo/Downloads/share-of-people-who-say-they-are-happy.csv"") %>% 
+  rename(happiness=`Happiness: Happy (aggregate)`) %>%  
+  filter(Entity %in% entities)
+"
+"2","[1mRows: [22m[34m423[39m [1mColumns: [22m[34m4[39m"
+"2","[36m──[39m [1mColumn specification[22m [36m─────────────────────────────────────────────────────────[39m
+[1mDelimiter:[22m "",""
+[31mchr[39m (2): Entity, Code
+[32mdbl[39m (2): Year, Happiness: Happy (aggregate)"
+"2","
+[36mℹ[39m Use `spec()` to retrieve the full column specification for this data.
+[36mℹ[39m Specify the column types or set `show_col_types = FALSE` to quiet this message."
